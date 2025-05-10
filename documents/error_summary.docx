@@ -1,0 +1,200 @@
+# DataWhisperer: Troubleshooting Log
+
+This document catalogs the key errors encountered during the development of DataWhisperer and the solutions implemented to resolve them.
+
+## Error 1: Missing Whisper Module
+
+### Error Message
+```
+ModuleNotFoundError: No module named 'whisper'
+Traceback:
+File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/site-packages/streamlit/runtime/scriptrunner/exec_code.py", line 88, in exec_func_with_error_handling
+    result = func()
+             ^^^^^^
+```
+
+### Analysis
+- The application attempted to import the 'whisper' module for speech recognition
+- The module was not installed in the Python environment Streamlit was using
+- The error occurred despite the module working when running scripts directly
+- This suggests different Python environments between direct execution and Streamlit
+
+### Solution Implemented
+1. **Created fallback mechanism** in `speech.py`:
+   ```python
+   try:
+       import whisper
+   except ImportError:
+       # Auto-installation code or fallback path
+   ```
+
+2. **Developed text-only mode** as complete alternative:
+   - Removed dependency on Whisper entirely
+   - Created simulated speech input with sample queries
+   - Modified UI to indicate text-only operation
+
+3. **Added environment detection** in startup script:
+   - Identifies which Python environment is being used
+   - Attempts to install missing packages in correct environment
+   - Gracefully degrades functionality when installation fails
+
+## Error 2: PyAudio Installation Failure
+
+### Error Message
+```
+ERROR: Failed building wheel for pyaudio
+Failed to build pyaudio
+ERROR: Failed to build installable wheels for some pyproject.toml based projects (pyaudio)
+```
+
+### Analysis
+- PyAudio requires system-level dependencies (PortAudio) that pip cannot install
+- This is a common issue on macOS, particularly on newer M-series Macs
+- The error prevents audio recording functionality from working
+
+### Solution Implemented
+1. **Created installation instructions** for system dependencies:
+   ```bash
+   # Install PortAudio using Homebrew
+   brew install portaudio
+   
+   # Install PyAudio with correct paths
+   pip install --global-option='build_ext' --global-option='-I/opt/homebrew/include' --global-option='-L/opt/homebrew/lib' pyaudio
+   ```
+
+2. **Developed alternative speech module** without PyAudio:
+   - Removed dependency on audio recording libraries
+   - Created text-only interface with sample queries
+   - Modified UI to indicate voice recording unavailability
+
+3. **Added conditional functionality** in application:
+   - Detects if audio libraries are available
+   - Falls back to text-only mode when unavailable
+   - Provides clear indication to user about limitations
+
+## Error 3: Missing llama_cpp Module
+
+### Error Message
+```
+ModuleNotFoundError: No module named 'llama_cpp'
+```
+
+### Analysis
+- Early versions of the application used llama_cpp for direct model loading
+- We later switched to using Ollama for better performance on Apple Silicon
+- Some code still had references to the llama_cpp module
+- The error occurred because the module was no longer in requirements.txt
+
+### Solution Implemented
+1. **Completely refactored LLM module**:
+   - Removed all dependencies on llama_cpp
+   - Used only the Ollama API for model inference
+   - Added robust error handling for API communication
+
+2. **Created simulation mode** for when Ollama is unavailable:
+   ```python
+   def get_simulated_response(query, df=None):
+       # Generate pre-built responses based on query patterns
+   ```
+
+3. **Added environment variable control**:
+   ```python
+   # Set environment variable to enable simulation mode
+   os.environ["SIMULATE_LLM"] = "true"
+   ```
+
+## Error 4: Environment and Path Issues
+
+### Error Message
+Various import errors depending on how the application was launched, suggesting path and environment inconsistencies.
+
+### Analysis
+- Python path issues when running from different directories
+- Inconsistent environment variables between terminal sessions
+- Different Python interpreters being used for different components
+
+### Solution Implemented
+1. **Created `run.py` script** with environment setup:
+   ```python
+   # Set Python path to current directory
+   os.environ["PYTHONPATH"] = os.getcwd()
+   
+   # Launch Streamlit with correct Python interpreter
+   subprocess.run([sys.executable, "-m", "streamlit", "run", "app.py"])
+   ```
+
+2. **Added dependency checking** in startup:
+   ```python
+   def check_dependency(module_name):
+       try:
+           __import__(module_name)
+           return True
+       except ImportError:
+           return False
+   ```
+
+3. **Implemented automatic installation** of critical dependencies:
+   ```python
+   subprocess.check_call([
+       sys.executable, "-m", "pip", "install", module_name
+   ])
+   ```
+
+## Error 5: Ollama Connectivity Issues
+
+### Error Message
+```
+Error communicating with Ollama API: HTTPConnectionPool(host='localhost', port=11434)
+```
+
+### Analysis
+- Ollama server not running when application tries to connect
+- Permission issues when trying to start Ollama automatically
+- Model not pulled or available for inference
+
+### Solution Implemented
+1. **Added comprehensive Ollama checks**:
+   ```python
+   def ensure_ollama_running():
+       # Check if installed
+       # Try to start server
+       # Verify connectivity
+       # Enable fallback if needed
+   ```
+
+2. **Created graceful fallback** when Ollama unavailable:
+   - Switches to simulation mode automatically
+   - Uses pre-built response templates based on query patterns
+   - Provides useful visualizations without requiring LLM
+
+3. **Added clear user feedback** about mode of operation:
+   - Indicates when running in simulation vs. LLM mode
+   - Explains limitations of current mode
+   - Provides guidance on enabling full functionality
+
+## Lessons Learned & Best Practices
+
+### 1. Dependency Management
+- **Always include fallback mechanisms** for external dependencies
+- **Test in isolated environments** to catch missing dependencies early
+- **Use graceful degradation** rather than failing completely
+
+### 2. Error Handling
+- **Catch specific exceptions** with targeted recovery paths
+- **Provide clear error messages** to aid troubleshooting
+- **Log detailed information** about the environment and state
+
+### 3. Installation Experience
+- **Automate setup where possible** but provide manual instructions
+- **Check for system prerequisites** before attempting installation
+- **Verify successful installation** of components before using them
+
+### 4. Testing Strategy
+- **Test on target hardware** to catch platform-specific issues
+- **Create simplified test modes** for core functionality
+- **Implement progressive enhancement** from minimal to full feature set
+
+### 5. Documentation Practices
+- **Document common errors** and their solutions
+- **Provide alternative approaches** for different environments
+- **Include troubleshooting guides** for complex setups
